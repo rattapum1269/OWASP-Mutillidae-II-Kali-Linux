@@ -23,26 +23,118 @@ Step 2: เปิด Docker Desktop
 
 Step 3: ตรวจสอบการทำงาน
 เปิด PowerShell แล้วพิมพ์:
-
+```c
 docker --version
 
 docker ps
-
+```
 ---
 
 # ส่วนที่ 2: ติดตั้ง OWASP Mutillidae II (Version 2.12.5)
 
 Step 1: Clone โปรเจกต์
-
+```c
 cd C: git clone [https://github.com/webpwnized/mutillidae-docker.git](https://github.com/webpwnized/mutillidae-docker.git)
 cd mutillidae-docker
+```
+Step 2: วาง docker-compose.yml 
 
-Step 2: แก้ docker-compose.yml ให้ใช้ network ภายนอก (external network)
-เพิ่ม network เช่น:
+```c
+name: mutillidae-ii
 
+services:
+
+  # 1️⃣ Database
+  database:
+    container_name: database
+    image: webpwnized/mutillidae:database
+    build:
+      context: ./.build/database
+      dockerfile: Dockerfile
+    networks:
+      - datanet
+
+  # 2️⃣ Database Admin (phpMyAdmin)
+  database_admin:
+    container_name: database_admin
+    depends_on:
+      - database
+    image: webpwnized/mutillidae:database_admin
+    build:
+      context: ./.build/database_admin
+      dockerfile: Dockerfile
+    ports:
+      - 127.0.0.1:81:80
+    networks:
+      - datanet
+
+  # 3️⃣ Web Application (Mutillidae)
+  www:
+    platform: linux/amd64
+    container_name: mutillidae-app
+    hostname: mutillidae
+    depends_on:
+      - database
+      - directory
+    image: webpwnized/mutillidae:www
+    build:
+      context: ./.build/www
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      datanet:
+        aliases:
+          - mutillidae
+      ldapnet:
+        aliases:
+          - mutillidae
+      pentest-net:
+        aliases:
+          - mutillidae
+
+  # 4️⃣ LDAP
+  directory:
+    container_name: directory
+    image: webpwnized/mutillidae:ldap
+    build:
+      context: ./.build/ldap
+      dockerfile: Dockerfile
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+    ports:
+      - 127.0.0.1:389:389
+    networks:
+      - ldapnet
+
+  # 5️⃣ LDAP Admin
+  directory_admin:
+    container_name: directory_admin
+    depends_on:
+      - directory
+    image: webpwnized/mutillidae:ldap_admin
+    build:
+      context: ./.build/ldap_admin
+      dockerfile: Dockerfile
+    ports:
+      - 127.0.0.1:82:80
+    networks:
+      - ldapnet
+
+# Volumes
+volumes:
+  ldap_data:
+  ldap_config:
+
+# Networks
 networks:
-hacking-lab:
-external: true
+  datanet:
+  ldapnet:
+  pentest-net:
+    external: true
+```
 
 Step 3: สร้าง Network สำหรับ Lab
 
