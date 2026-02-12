@@ -136,27 +136,90 @@ networks:
     external: true
 ```
 
-Step 3: สร้าง Network สำหรับ Lab
+Step 3 : แก้ไข dockerfile
 
+```c
+FROM php:apache
+
+ARG DATABASE_HOST="database"
+ARG DATABASE_USERNAME="root"
+ARG DATABASE_PASSWORD="mutillidae"
+ARG DATABASE_NAME="mutillidae"
+ARG DATABASE_PORT="3306"
+ARG ENABLE_ERROR_REPORTING=true
+
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y \
+        libldap2-dev \
+        libxml2-dev \
+        libonig-dev \
+        libcurl4-openssl-dev \
+        dnsutils \
+        git \
+        iputils-ping \
+        ntpsec && \
+    docker-php-ext-install ldap xml mbstring curl mysqli && \
+    cd /tmp && \
+    git clone https://github.com/webpwnized/mutillidae.git mutillidae && \
+    cp -r mutillidae/src /var/www/mutillidae && \
+    rm -rf /tmp/mutillidae && \
+    mkdir -p /var/www/mutillidae/data /var/www/mutillidae/passwords && \
+    chown -R www-data:www-data /var/www/mutillidae/data /var/www/mutillidae/passwords && \
+    chmod -R 775 /var/www/mutillidae/data /var/www/mutillidae/passwords && \
+    apt-get remove --no-install-recommends -y git && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -M phinius
+
+# PHP Config
+RUN cp /usr/local/etc/php/php.ini-development /usr/local/etc/php/php.ini && \
+    sed -i 's/allow_url_include = Off/allow_url_include = On/g' /usr/local/etc/php/php.ini && \
+    sed -i 's/allow_url_fopen = Off/allow_url_fopen = On/g' /usr/local/etc/php/php.ini && \
+    sed -i 's/expose_php = Off/expose_php = On/g' /usr/local/etc/php/php.ini
+
+RUN if [ "$ENABLE_ERROR_REPORTING" = "true" ]; then \
+    sed -i 's/^error_reporting = .*/error_reporting = E_ALL/' /usr/local/etc/php/php.ini && \
+    sed -i 's/^display_errors = .*/display_errors = On/' /usr/local/etc/php/php.ini; \
+    fi
+
+# App Config
+RUN rm /var/www/mutillidae/.htaccess && \
+    sed -i "s/define('DB_HOST', '127.0.0.1');/define('DB_HOST', '$DATABASE_HOST');/" /var/www/mutillidae/includes/database-config.inc && \
+    sed -i "s/define('DB_USERNAME', 'root');/define('DB_USERNAME', '$DATABASE_USERNAME');/" /var/www/mutillidae/includes/database-config.inc && \
+    sed -i "s/define('DB_PASSWORD', 'mutillidae');/define('DB_PASSWORD', '$DATABASE_PASSWORD');/" /var/www/mutillidae/includes/database-config.inc && \
+    sed -i "s/define('DB_NAME', 'mutillidae');/define('DB_NAME', '$DATABASE_NAME');/" /var/www/mutillidae/includes/database-config.inc && \
+    sed -i "s/define('DB_PORT', 3306);/define('DB_PORT', $DATABASE_PORT);/" /var/www/mutillidae/includes/database-config.inc && \
+    sed -i 's/127.0.0.1/directory/' /var/www/mutillidae/includes/ldap-config.inc
+
+# Apache
+RUN a2enmod ssl && \
+    a2dissite 000-default
+
+EXPOSE 80
+EXPOSE 443
+```
+Step 4: สร้าง Network สำหรับ Lab
+```c
 docker network create hacking-lab
-
+```
 ตรวจสอบ:
-
+```c
 docker network ls
-
-Step 4: Build Image
-
+```
+Step 5: Build Image
+```c
 docker compose build
-
-Step 5: เปิดระบบ
-
+```
+Step 6: เปิดระบบ
+```c
 docker compose up -d
-
+```
 ตรวจสอบ container:
-
+```c
 docker ps
-
-Step 6: เข้าใช้งานผ่าน Browser
+```
+Step 7: เข้าใช้งานผ่าน Browser
 
 [http://localhost](http://localhost)
 
@@ -165,46 +228,33 @@ Step 6: เข้าใช้งานผ่าน Browser
 ---
 
 # ส่วนที่ 3: ติดตั้ง Kali Linux (VM)
+ ใช้  powershell ในการรันนะ
+```c
+docker run -d `
+  --name kali-gui `
+  --network pentest-net `
+  --security-opt seccomp=unconfined `
+  -e PUID=1000 `
+  -e PGID=1000 `
+  -e TZ=Asia/Bangkok `
+  -p 3500:3000 `
+  --shm-size=1gb `
+  --restart unless-stopped `
+  lscr.io/linuxserver/kali-linux:latest
+```
+เข้า Kali GUI
 
-Step 1: ติดตั้ง VMware หรือ VirtualBox
-Step 2: ดาวน์โหลด Kali Linux ISO
-[https://www.kali.org/get-kali/](https://www.kali.org/get-kali/)
+เปิด browser Windows:
 
-Step 3: สร้าง VM ใหม่
+http://localhost:3500
 
-- RAM อย่างน้อย 4GB
-- Network: เลือก "Bridged Adapter"
 
-Step 4: ติดตั้ง Kali ตามขั้นตอนปกติ
-
+จะเห็น Desktop ของ Kali
 ---
 
-# ส่วนที่ 4: การตั้งค่า Network ให้ Kali เชื่อม Mutillidae
+### ขั้นตอนการเปิด-ปิด
 
-โครงสร้าง:
-Kali VM → Windows Host → Docker (Mutillidae)
-
-Step 1: ดู IP Windows
-เปิด Command Prompt:
-
-ipconfig
-
-ดูค่า IPv4 เช่น:
-172.31.240.1
-
-Step 2: จาก Kali ทดสอบ ping
-
-ping 172.31.240.1
-
-Step 3: เปิดเว็บจาก Kali
-
-[http://172.31.240.1](http://172.31.240.1)
-
-ถ้าเข้าได้ แสดงว่า network ถูกต้อง
-
----
-
-# ส่วนที่ 5: ขั้นตอนการเปิดใช้งาน (Start Lab)
+# ส่วนที่ 1: ขั้นตอนการเปิดใช้งาน (Start Lab)
 
 ## เปิด Docker + Mutillidae
 
@@ -220,57 +270,53 @@ docker ps
 
 ## เปิด Kali
 
-1. เปิด VMware/VirtualBox
-2. Start Kali VM
-3. ตรวจสอบ IP:
+```c
+docker start kali-gui
+```
+เข้า kali
 
-ip a
+http://localhost:3500
 
-4. เข้าเว็บเป้าหมาย
-
-http\://
 
 ---
 
 # ส่วนที่ 6: ขั้นตอนการปิดระบบ (Shutdown Lab)
 
 ## ปิด Mutillidae
-
+```c
 docker compose down
-
+```
 ถ้าต้องการหยุดเฉย ๆ (ไม่ลบ network/volume):
-
+```c
 docker compose stop
-
+```
 ## ปิด Kali
+```c
+docker stop kali-gui
+```
 
-ใน Kali terminal:
-
-sudo poweroff
-
-หรือปิดจากปุ่มใน VMware
 
 ---
 
 # ส่วนที่ 7: คำสั่ง Network สำคัญ
 
 ดู network ทั้งหมด:
-
+```c
 docker network ls
-
+```
 ดูรายละเอียด network:
-
+```c
 docker network inspect hacking-lab
-
+```
 ดู container ทั้งหมด:
-
+```c
 docker ps -a
-
+```
 ---
 
 # สรุปโครงสร้าง Lab
 
-Kali Linux (VM)
+Kali Linux (docker)
 ↓
 Windows Host
 ↓
